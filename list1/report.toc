@@ -1,0 +1,23 @@
+\contentsline {section}{Introduction}{2}{section*.2}%
+\contentsline {section}{Multiple Regression}{2}{section*.3}%
+\contentsline {subsection}{Estimating Regression Coefficients}{3}{section*.4}%
+\contentsline {subsection}{Fitted Values}{3}{section*.5}%
+\contentsline {subsection}{Estimator of \(\sigma \)}{4}{section*.6}%
+\contentsline {subsection}{Wishart and Inverse-Wishart Distribution}{4}{section*.7}%
+\contentsline {section}{Multiple Testing}{4}{section*.8}%
+\contentsline {subsection}{Test Quality Measures}{5}{section*.9}%
+\contentsline {subsubsection}{FWER}{5}{section*.10}%
+\contentsline {subsubsection}{FDR}{5}{section*.11}%
+\contentsline {subsubsection}{mFDR}{5}{section*.12}%
+\contentsline {subsubsection}{Power}{5}{section*.13}%
+\contentsline {subsection}{Multiple Testing Procedures}{5}{section*.14}%
+\contentsline {subsubsection}{Bonferroni's procedure}{6}{section*.15}%
+\contentsline {subsubsection}{Benjamini-Hochberg's procedure}{6}{section*.16}%
+\contentsline {section}{Simualtions}{6}{section*.17}%
+\contentsline {subsection}{Theoretical calculations}{6}{section*.18}%
+\contentsline {subsubsection}{Variance of the Estimators of Individual Regression Coefficients}{6}{section*.19}%
+\contentsline {subsubsection}{FWER}{7}{section*.20}%
+\contentsline {subsubsection}{Power}{8}{section*.21}%
+\contentsline {subsubsection}{mFDR}{9}{section*.22}%
+\contentsline {subsection}{Single simualtion}{9}{section*.23}%
+\contentsline {subsection}{Estimation}{11}{section*.24}%

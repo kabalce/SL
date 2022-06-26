@@ -1,0 +1,11 @@
+"0","
+plot(as.vector(b_IR)~b, 
+     main=""Regression coefficients for irrepresentability"", 
+     xlab=""true beta"", 
+     ylab=""estimated beta"")
+abline(h=(max(b_IR[b==0])+min(b_IR[b!=0]))/2, lty=2, color=""grey"")
+"
+"2","<sparse>[ <logic> ] : .M.sub.i.logical() maybe inefficient
+"
+"2","<sparse>[ <logic> ] : .M.sub.i.logical() maybe inefficient
+"

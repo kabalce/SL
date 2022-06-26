@@ -1,0 +1,494 @@
+---
+title: "Report 4"
+author: "Klaudia Balcer"
+date: "12/17/2021"
+output: 
+  pdf_document:
+    extra_dependencies: ["bbm", "caption", "tabularx", "booktabs", "graphicx"]
+    toc: true
+    toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(include = TRUE)
+# knitr::opts_chunk$set(eval = FALSE)  # TODO: remove!!!
+
+library(ggplot2)
+library(knitr)
+library(reshape2)
+library(sfsmisc)
+
+set.seed(2021)
+```
+
+# Introduction
+
+In this report, we will consider multiple hypotheses testing problem and the properties of the Kolmogorov-Smirnov test. First, we will take a look at some multiple comparison procedures. Then, we discuss the relation between the KS statistics and the Brownian Bridge. The last section is devoted to the closure procedure, another way to handle multiple hypothesis testing. 
+
+Each of the topics is discussed theoretically and illustrated with simulations.
+
+# Multiple Testing
+
+## Problem Definition
+
+Let's consider n testing problems:
+
+$$H_{0, i}: \mu_i = 0 \quad vs \quad H_{1, i}: \mu_i \neq 0$$
+
+Multiple testing means testing many individual hypotheses ($H_{0, i}$ vs. $H_{1, i}$) at the same time. To  simply statistically test each hypothesis separately doesn't lead to satisfying results. We use **multiple comparison procedures** (MCPs) instead. MCPs are used to improve the quality of the tests. 
+
+The outcome of an MCP can be presented in the following form:
+
+|     | accepted | rejected | total   |
+|-----|----------|----------|---------|
+|true | TN       | FP       | $n_0$   |
+|false| FN       | TP       |n - $n_0$|
+|total| n - R    | R        | n       |
+
+The symbols used:
+
+- TN - True Negatives - the null hypothesis is true, and it was accepted (U in *Candes*),
+
+- FP - False Positives - the null hypothesis is true, but it was rejected (V in *Candes*),
+
+- FN - False Negatives - the null hypothesis is false, and it was accepted (T in *Candes*),
+
+- TP - True Positives - the null hypothesis is false, and it was rejected (S in *Candes*), 
+
+- $n_0$ - the number of true null hypotheses,
+
+- R - the number of rejected hypotheses,
+
+- n - the number of hypotheses.
+
+**_Note:_** n and $n_0$ are the numbers. n is a known number; $n_0$ is an unknown number. TN, FP, FN, TP, R are random variables. R is an observed random variable; TN, FP, FN, TP are unobserved random variables.
+
+## Test Quality Measures
+
+The definition of the Type I Error does not simply propagate to multiple testing problem. On the one hand, allowing a single false discovery with the probability $\alpha$  is a very strict condition. On the other hand, allowing the probability of false discovery in each test to be $\alpha$, leads to many false discoveries. Hence we need to introduce new quality measures: FWER and FDR.
+
+### FWER
+
+FWER stands for **F**amili**w**ise **E**rror **R**ate. 
+
+In **strong** sense: it is the probability of making any false dicoveries: 
+
+$$FWER = \mathbb{P}(FP \geq 1)$$
+In **weak** sense: it is the probability of making any false discoveries if all the global null hypothesis is true: 
+
+$$FWER = \mathbb{P}(FP \geq 1 |  \forall_i H_{0, i})$$
+
+### FDR
+
+FDR stands for **F**alse **D**iscovery **R**ate id the expected value of FDP (**F**alse **D**iscovery **P**roportion) - the ratio between the numbers of false discoveries and all rejections:
+
+$$FDR = \mathbb{E}\Bigg[ \frac{FP}{ max(R, 1)}\Bigg]$$
+Under the global null hypothesis, FDR and FWEAR are equivalent.
+
+### Power
+
+Power is the probability of rejecting the null hypothesis when it is false. In the above terms, we can express it as the expected value of the ratio of TP and the number of false hypotheses:
+
+$$power = \mathbb{E}\Bigg[ \frac{TP}{n - n_0} \Bigg]$$
+
+## Tests
+
+For all below procedures, first we calculate the p-values of single tests:
+
+- p-values: $p_1, p_2, \ldots, p_n$,
+
+- ordered p-values: $p_{(1)}, p_{(2)}, \ldots, p_{(n)}$.
+
+### Bonferroni's procedure
+
+Reject $H_{0, i}$ if: $$p_i <  \frac \alpha n$$
+
+This method is very conservative. We know from the lecture that Bonferroni's method controls FWER in a strong sense. In fact, 
+
+$$FWER \leq \frac{n_0}{n} \alpha$$
+
+### Sidak's procedure
+
+Reject $H_{0, i}$ if: $$p_i <  \frac {\alpha_n} n$$
+
+where $(1 -  \frac {\alpha_n} n)^n = 1 - \alpha$.
+
+Sidak's procedure is slightly less conservative than Bonferroni's. There is a small difference between those two tests. For large n, both procedures give the same results. Sidak's procedure also controls FWER in a strong sense. In fact, 
+
+$$FWER = 1 - (1 - \alpha_n)^{n_0}$$
+
+### Holm's procedure 
+
+Reject $H_{0, (i)}$ if: 
+
+$$\forall_{(j \leq i)}  \quad p_{(j)} <  \frac {\alpha} {n - j + 1}$$
+Holm's method is a step-up procedure. Step-up procedures (requiring all rejections) are more conservative and less powerful than step-down procedures (requiring any rejection). It is less conservative than Bonferroni's procedure. Holm's procedure also controls FWER strongly.  Thus, it can be used instead of Bonferroni's method.
+
+### Hochberg's procedure
+
+Reject $H_{0, (i)}$ if: 
+
+$$\exists _{(j \geq i)}  \quad p_{(j)} <  \frac {\alpha} {n - j + 1}$$
+Hochberg's method is a step-down procedure. It is more powerful than Holm's method, but still controls FWER (in a strong sense under independence). 
+
+### Benjamini-Hochberg's procedure
+
+Reject $H_{0, (i)}$ if: 
+
+$$\exists _{(j \geq i)}  \quad p_{(j)} <  \frac {j} {n} \alpha$$
+Benjamini-Hochberg's method is a step-down procedure. This procedure controls FDR under independence. Thus, it controls FWER weakly. It does not control FWER in a strong sense. It is much more liberal than Hochberg's procedure (more powerful and leads to more false discoveries). 
+
+## Simulations 
+
+Simulation in both tasks consist of 1000 repetitions.
+
+### Task 1 
+
+In the first task, we will consider a low-dimensional case. Let n = 20. 
+
+```{r multiple_testing_procedures}
+bonferroni <- function(pvals, alpha=0.05) {
+  n <- length(pvals)
+  pvals <= (alpha / n)
+}
+
+sidak <- function(pvals, alpha=0.05) {
+  n <- length(pvals)
+  alpha_n <- 1 - (1 - alpha) ^ (1/n)
+  pvals <= alpha_n
+}
+
+holm <- function(pvals, alpha=0.05) {
+  n <- length(pvals)
+  ord <- order(pvals)
+  ord2 <- order(ord)
+  res <- (pvals[ord] <= (alpha / (n + 1 - seq(n))))
+  sapply(1:n, function(i) all(res[1:i]))[ord2]
+}
+
+hochberg <- function(pvals, alpha=0.05) {
+  n <- length(pvals)
+  ord <- order(pvals)
+  ord2 <- order(ord)
+  res <- (pvals[ord] <= (alpha / (n + 1 - seq(n))))
+  sapply(1:n, function(i) any(res[i:n]))[ord2]
+}
+
+benjamini_hochberg <- function(pvals, alpha=0.05) {
+  n <- length(pvals)
+  ord <- order(pvals)
+  ord2 <- order(ord)
+  res <-( pvals[ord] <= ((alpha * seq(n) / n)))
+  sapply(1:n, function(i) any(res[i:n]))[ord2]
+}
+```
+
+
+```{r simulation_function}
+# provide a vector  of  expected values
+mu <- function(mu, n_mu, n) {
+  c(rep(mu, n_mu), rep(0, n - n_mu))
+} 
+
+# measures
+FWER <- function(true_values, test_results) { 
+  # T - reject H0, F - accept H0
+  as.integer(any(test_results[which(!true_values)]))
+}
+
+FDR <- function(true_values, test_results) {
+  sum(test_results[which(!true_values)]) / max(sum(test_results), 1)
+}
+
+power <- function(true_values, test_results) {
+  mean(test_results[which(true_values)])
+}
+
+# simulation functions
+step1 <- function(mu_vec) {
+  n <- length(mu_vec)
+  X <- rnorm(n, mu_vec)
+  pvals <- 2 * (1 - pnorm(abs(X)))
+  
+  test_results <- list(bonferroni = bonferroni(pvals),
+                    sidak = sidak(pvals),
+                    holm = holm(pvals),
+                    hochberg = hochberg(pvals),
+                    benjamini_hochberg = benjamini_hochberg(pvals))
+  
+  results <- sapply(test_results, function(test_result) list(FWER = FWER(mu_vec > 0, test_result),
+                                                             FDR = FDR(mu_vec > 0, test_result),
+                                                             power = power(mu_vec > 0, test_result)))
+  results
+}
+
+simulation1 <- function(mu_vec, m) {
+  res <- replicate(m, step1(mu_vec))
+  apply(res, c(1, 2), function(x) mean(as.numeric(x)))
+}
+```
+
+```{r simulation1}
+## Input
+n <- 20
+m <- 1000
+
+mu1 <- 1.2 * sqrt(2 * log(n))
+n_mu1 <- 1
+
+mu2 <- 1.02 * sqrt(2 * log(n / 10))
+n_mu2 <- 5
+
+mu3 <- sqrt(2 * log(20/seq(10)))
+
+## Run simulations
+res1 <- simulation1(mu(mu1,  n_mu1, n), m)
+res2 <- simulation1(mu(mu2,  n_mu2, n), m)
+res3 <- simulation1(c(mu3, rep(0, 10)), m)
+
+kable(res1, digits=3, 
+      caption = "$\\mu_1 = 1.2\\sqrt{2 log n}, \\quad \\mu_2 = \\ldots = \\mu_20 = 0$", 
+      col.names = c("Bonferroni's", "Sidak's", "Holm's", "Hochberg's", "Benjamini-Hochberg's"))
+
+kable(res2, digits=3, 
+      caption = "$\\mu_1 = \\dots = \\mu_5 = 1.02\\sqrt{2 log (\\frac {n} {10})}, \\quad \\mu_6 = \\ldots = \\mu_20 = 0$", 
+      col.names = c("Bonferroni's", "Sidak's", "Holm's", "Hochberg's", "Benjamini-Hochberg's"))
+
+kable(res3, digits=3, 
+      caption = "$\\mu_i = \\sqrt{2 log (\\frac {20} {i})}, i = 1, \\ldots 10, \\quad \\mu_11 = \\ldots = \\mu_20 = 0$", 
+      col.names = c("Bonferroni's", "Sidak's", "Holm's", "Hochberg's", "Benjamini-Hochberg's"))
+```
+### Task 2
+
+In the second task, we will repeat the above comparison in the high-dimensional case. let n = 5000.
+
+```{r simulation2}
+## Input
+n <- 5000
+# n <- 500
+m <- 1000
+# m <- 100
+
+mu1 <- 1.2 * sqrt(2 * log(n))
+n_mu1 <- 1
+
+mu2 <- 1.02 * sqrt(2 * log(n / 200))
+n_mu2 <- 100
+
+mu3 <- sqrt(2 * log(n/200))
+n_mu3 <- 100
+
+mu4 <- 1.002 * sqrt(2 * log(n/2000))
+n_mu4 <- 1000
+
+## Run simulations
+res1 <- simulation1(mu(mu1,  n_mu1, n), m)
+res2 <- simulation1(mu(mu2,  n_mu2, n), m)
+res3 <- simulation1(mu(mu3,  n_mu3, n), m)
+res4 <- simulation1(mu(mu4,  n_mu4, n), m)
+
+kable(res1, digits=3, 
+      caption = "$\\mu_1 = 1.2\\sqrt{2 log n}, \\quad \\mu_2 = \\ldots = \\mu_5000 = 0$", 
+      col.names = c("Bonferroni's", "Sidak's", "Holm's", "Hochberg's", "Benjamini-Hochberg's"))
+
+kable(res2, digits=3, 
+      caption = "$\\mu_1 = \\dots = \\mu_100 = 1.02\\sqrt{2 log (\\frac {n} {200})}, \\quad \\mu_101 = \\ldots = \\mu_5000 = 0$", 
+      col.names = c("Bonferroni's", "Sidak's", "Holm's", "Hochberg's", "Benjamini-Hochberg's"))
+
+kable(res3, digits=3, 
+      caption = "$\\mu_1 = \\dots = \\mu_100 = \\sqrt{2 log (\\frac {n} {200})}, \\quad \\mu_101 = \\ldots = \\mu_5000 = 0$", 
+      col.names = c("Bonferroni's", "Sidak's", "Holm's", "Hochberg's", "Benjamini-Hochberg's"))
+
+kable(res4, digits=3, 
+      caption = "$\\mu_1 = \\dots = \\mu_1000 = 1.002\\sqrt{2 log (\\frac {n} {2000})}, \\quad \\mu_2001 = \\ldots = \\mu_5000 = 0$", 
+      col.names = c("Bonferroni's", "Sidak's", "Holm's", "Hochberg's", "Benjamini-Hochberg's"))
+```
+
+All procedures controlling FWER (Bonferroni's, Sidak's, Holm's, Hochberg's) give similar results. Sidak's and Holm's methods are at least that good as Bonferroni's. Hochberg's procedure is at least as good as Holm's. Benjamini-Hochberg's method does control FDR but it doesn't control FWER. In all cases, it has greater power (at the expense of more false discoveries - greater FDR and FWER). 
+
+# Empirical CDF Properties
+
+In this task, we will compare the Brownian Bridge and an empirical process.
+
+## Theoretical Definitions
+
+### Empirical Process
+
+The considered empirical process is a function of the ECDF. ECDF stands for the **E**mpirical **C**umulative **D**istribution **F**unction. The ECDF of the p-values is defined as:
+
+$$F_n(t) = \frac 1 n \# \{i: p_i \leq t\}$$
+
+We will consider the process:
+
+$$U_n(t) = \sqrt n (F_n(t) - t), \quad t \in [0, 1]$$
+
+which describes the difference between the empirical and theoretical CDFs of p-values under the null hypothesis. We will compare it with the Brownian Bridge. 
+
+### Brownian Bridge
+
+The Brownian bridge is a stochastic process. We will show its derivative from normally distributed random variables.
+
+Let's start with $Z_1, Z_2, \ldots, Z_n \sim \mathcal N(0, 1)$. 
+
+The Wiener process is a stochastic probess with below properties:
+
+- w(0) = 0, 
+
+- w(t) - w(s), w(t') - w(s') - are independent random variables for all $s' < t'$, $s  < t$,
+
+- w(t) - w(s) $\sim \mathcal N(0, t-s)$.
+
+So using $Z_1, Z_2, \ldots, Z_n$ we can construct a sample from Wiener process like:
+
+$$w_n(\frac i n) = \sum_{1 \leq k \leq n} Z_k$$
+The Brownian bridge can be constructed from Wiener process:
+
+$$B(t) = w(t) - tw(1), \quad t \in [0, 1]$$
+So in the discrete case, we can construct the sample like:
+
+$$B_n\Big(\frac i n \Big) = w_n \Big(\frac i n \Big) - \frac i n w_n(1)$$
+
+### T Statistics
+
+We will compare quantiles of two statistics. The first of them is:
+
+$$T = sup_{t \in [0, 1]} |B_n(t)|$$
+
+### K-S Statistics
+
+The second statistics for quantile comparison:
+
+$$KS = sup_{t \in [0, 1]} |U_n(t)|$$
+
+Under $H_0$, it is when p-values are uniformly distributed, the KS statistic converges to the T statistic in probability. 
+
+## Simulation
+
+### Task 3
+
+```{r simulation3}
+n <- 5000
+m <- 1000
+# m <- 200
+
+simulate_Un <- function(pvals) {
+  n <- length(pvals)
+  ts <-  seq(n) / n
+  CDF <- ecdf(pvals)
+  U <- sqrt(n) * (CDF(ts) - ts)
+  U
+}
+
+simulate_BB <- function(zs) {
+  n <- length(zs)
+  Ws <- cumsum(zs) / sqrt(n)
+  Bs <- Ws - seq(n) / n * Ws[n]
+  Bs
+}
+
+step3 <- function(n) {
+  zs <- rnorm(n)
+  pvals <- 2 * (1 - pnorm(abs(zs)))
+  a <- array(dim=c(2, n), dimnames = list(c("BB", "U")))
+  a["BB", ] <- simulate_BB(zs)
+  a["U", ] <- simulate_Un(pvals)
+  a
+}
+
+simulation3 <- function(n, m) {
+  replicate(m, step3(n))
+}
+
+res3 <- simulation3(n, m)
+```
+
+```{r plot_trajectories, results='asis'}
+data_to_plot <- data.frame()
+
+for (i in 1:5) {
+  data_to_plot <- rbind(data_to_plot, cbind(i, seq(n)/n, sapply(c("BB", "U"), function(sim) res3[sim, , i])))
+}
+
+data_to_plot  <- melt(data_to_plot, id.vars=c("i", "V2"),  measure.vars = c("BB",  "U"))
+data_to_plot$i <- factor(data_to_plot$i,  ordered=T)
+ggplot(data_to_plot, aes(x=V2, y=value,  color=variable,  fantom_variable=i)) + geom_line() + theme_bw()
+```
+
+
+```{r provide_quantiles}
+T_stat <- sapply(seq(dim(res3)[3]),  function(i) max(abs(res3["BB",  , i])))
+
+quants <-  c(0.8,  0.9,  0.95)
+kable(t(quantile(T_stat, quants)), caption = "T quantiles", digits = 3)
+
+KS_stat <- sapply(seq(dim(res3)[3]),  function(i) max(abs(res3["U",  , i])))
+
+kable(t(quantile(KS_stat, quants)), caption = "KS quantiles", digits = 3)
+```
+
+As expected, the quantiles are similar. 
+
+# Closure Procedure
+
+In the last task, we will compare FWER, FDR, and power of closure tests (Bonferroni and $\chi ^2$). Closure procedure is a way to apply global tests for multiple testing problem.
+
+## Closure Tests 
+
+In the last task, we will use the closures of Bonferroni and $\chi ^2$ tests for multiple hypotheses testing. 
+
+The closure of a test means that we run the global tests on all subsets of hypotheses. To determine, which single hypothesis to reject, we look at all subsets containing those single hypotheses. When the global hypotheses for all subsets containing the hypothesis were rejected, we reject the single hypothesis. Otherwise, we have no evidence to reject the single hypothesis. 
+
+The closure procedure is computationally expensive. In $n$-dimensional case, we need to consider $2^n - 1$ global hypotheses. 
+
+The closure procedure of Bonferroni's method is Holm's procedure. The closure of the $\chi^2$ procedure needs calculating from the definition.
+
+## Simulation
+
+### Task 4
+
+```{r closure_procedures}
+bonferroni_closure <- holm
+
+chisq_closure <- function(X) {
+  terms <- X^2
+  n <- length(X)
+  indexes <- sapply(seq(2^n - 1), function(i) as.logical(digitsBase(i, base= 2, n)))
+  res_partial  <- sapply(seq(2^n - 1), function(i) sum(terms[indexes[, i]]) > qchisq(0.95, sum(indexes[,  i])))
+  res <- sapply(seq(n), function(i) all(res_partial[indexes[i,  ]]))
+  res
+}
+```
+
+```{r simulation4}
+step4 <- function(mu_vec) {
+  n <- length(mu_vec)
+  X <- rnorm(n, mu_vec)
+  pvals <- 2*(1 - pnorm(abs(X)))
+  
+  test_results <- list(bonferroni_closure = bonferroni_closure(pvals),
+                       chisq_closure = chisq_closure(X))
+  
+  results <- sapply(test_results, function(test_result) list(FWER = FWER(mu_vec > 0, test_result),
+                                                             FDR = FDR(mu_vec > 0, test_result),
+                                                             power = power(mu_vec > 0, test_result)))
+  results
+}
+
+simulation4 <- function(mu_vec, m) {
+  res <- replicate(m, step4(mu_vec))
+  apply(res, c(1, 2), function(x) mean(as.numeric(x)))
+}
+
+mu1 <- c(1.02 * sqrt(2 * log(10)), rep(0, 9))
+mu2 <- c(rep(1, 5),  rep(0,  5))
+
+m <- 1000
+
+kable(simulation4(mu1, m), caption = "Needle in the haystack: $\\mu_1 = 1.02 \\sqrt{2logn}, \\quad \\mu_2 = \\ldots = \\mu_{10} = 0$", digits=3)
+kable(simulation4(mu2, m),  caption = "Many small effects: $\\mu_1 = \\ldots = \\mu_5 = 1, \\quad \\mu_6 = \\ldots = \\mu_{10} = 0$", digits=3)
+```
+
+It is to see, that the global null tests hold their properties when used in the closure procedure. The closure of Bonferroni's test deals better with the needle in the haystack problem. Fisher gives better results when detecting distributed effects. 

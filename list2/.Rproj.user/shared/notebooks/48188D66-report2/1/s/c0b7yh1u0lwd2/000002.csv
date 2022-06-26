@@ -1,0 +1,2 @@
+"0","qs <- c(20, 100, 500, 950)"
+"0","crits <- c(BIC=bic, AIC=aic, RIC=function(loglik, k, p) {2 * k * log(p) - 2 * loglik}, mBIC=mbic, mBIC2=mbic2)"

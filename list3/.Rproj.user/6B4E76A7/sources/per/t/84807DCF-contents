@@ -1,0 +1,1183 @@
+---
+title: "Report 1"
+subtitle: "LASSO, Ridge and ElasticNet Regression"
+author: "Klaudia Balcer"
+date: "12/17/2021"
+output: 
+  pdf_document:
+    extra_dependencies: ["bbm", "caption", "tabularx", "booktabs", "graphicx", "amsmath"]
+    toc: true
+    toc_depth: 2
+    keep_tex: yes
+    fig_caption: yes
+    fig_width: 7
+    fig_height: 4
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(include = TRUE,results='asis')  
+knitr::opts_chunk$set(fig.width = 3.4,
+                      fig.asp = 1.0, 
+                      out.width = "80%")
+# knitr::opts_chunk$set(eval = FALSE)  # TODO: remove!!!
+
+library(ggplot2)
+library(knitr)
+library(reshape2)
+library(sfsmisc)
+library(stringr)
+library(glmnet)
+library(pracma)
+library(mvtnorm)
+library(SLOPE)
+library(lpSolve)
+library(bigstep)
+library(MASS)
+
+set.seed(2022)
+```
+
+\newpage
+
+# Task 1
+
+In the first task, we will compare the properties of Ordinary Least Squares (OLS) and Ridge regression. We will consider the variance, the bias, and the mean squared error (MSE) of $\hat \beta$ in the orthogonal design.
+
+## Theoretical calculations for Ridge Regression
+
+1. **Coefficients**
+
+  $$\hat \beta ^{RIDGE} = \frac {1}{1 + \gamma} \hat \beta ^{LS}$$
+
+2. **Optimal $\gamma$ (in terms of MSE)**
+
+  $$\gamma_{opt} = \frac {p\sigma^2} {\Vert\beta\Vert^2}$$
+
+3. **MSE**
+
+  - general:
+
+  $$MSE(\gamma) = \frac {\gamma^2\Vert\beta\Vert^2 + p\sigma^2} {(1 + \gamma)^2}$$
+
+
+  - for optimal $\gamma$:
+
+  $$MSE_{opt} = \frac {\Vert\beta\Vert^2 p\sigma^2} {\Vert\beta\Vert^2 + p\sigma^2} $$
+
+
+
+4. **Bias**
+
+  - general:
+  
+  $$\mathbb E [\hat \beta ^{RIDGE} - \beta] = \mathbb E \hat \beta ^{RIDGE} - \beta = \mathbb E [\frac {1}{1 + \gamma} \hat \beta ^{LS}] - \beta = \frac {1}{1 + \gamma} \mathbb E\hat \beta ^{LS} - \beta = \frac {1}{1 + \gamma}  \beta  - \beta = -\frac {\gamma}{1 + \gamma}  \beta $$
+
+  - for optimal $\gamma$:
+
+  $$Bias_{opt} = -\frac {p\sigma^2}{p\sigma^2 + \Vert \beta \Vert^2} \beta $$
+
+5. **Variance**
+  
+  - general:
+  
+  $$Var(\hat \beta_i^{RIDGE}) = 
+  Var\Big(\frac {1}{1 +  \gamma} (\beta_i + Z_i)  \Big) = 
+  \Big( \frac {1}{1 +  \gamma} \Big)^2 Var(\beta_i +  Z_i) =
+  \Big( \frac {1}{1 +  \gamma} \Big)^2 Var(Z_i) = 
+  \Big( \frac {1}{1 +  \gamma} \Big)^2 \sigma^2 = 
+  \frac {\sigma ^2} {( 1 + \gamma) ^2}$$
+
+  - for optimal $\gamma$:
+
+  $$\frac {\sigma^2 \Vert\beta\Vert^4} {(p\sigma^2 + \Vert\beta\Vert^2)^2}$$
+
+## Simulations
+
+We will repeat the following experiment two hundred times:
+
+  - generate an orthogonal matrix $X$ of size $1000 \times 950$, generate an error term vector from standard normal distribution;
+  
+  - the real coefficients are: $\beta_1, \ldots, \beta_k = 3.5$, $\beta_{k+1}, \ldots, \beta_{950} = 0$ for $k$ equal 20, 100, 200;
+  
+  - select tuning parameter $\lambda$ for Ridge Regression to minimize the MSE of $\hat\beta$;
+  
+  - build an OLS and Ridge Regression model;
+  
+  - evaluate the models by calculating MSE, variance and bias. 
+
+```{r}
+n <- 1000
+p <- 950
+ks <- c(20, 100, 200)
+
+real_beta <- function(k, p=p, val=3.5) {
+  c(rep(val, k), rep(0, p-k))
+}
+
+step1 <- function(k, X, eps) {
+  p <- dim(X)[2]
+  b <- real_beta(k, p)
+  Y <- X %*% b + eps
+  model <- glmnet(X, Y, alpha=0, lambda=cv.glmnet(X, Y, alpha=0)$lambda.min, 
+                  intercept=F, standardize=F)
+  b_hat <- model$beta
+  
+  MSE <- sum((b_hat - b)^2 / p)
+  bias <- sum(abs(b_hat - b) / p)
+  v <- MSE - bias^2
+  
+  b_ols <- lm(Y~X-1)$coefficients
+  b_ols[is.na(b_ols)] <- 0
+  MSE_ols <- sum((b_hat - b_ols)^2 / p)
+  bias_ols <- sum(abs(b_hat - b_ols) / p)
+  v_ols <- MSE_ols - bias_ols^2
+  
+  return(c(MSE_rr=MSE, bias_rr=bias, var_rr=v,
+           MSE_ols=MSE_ols, bias_ols=bias_ols, var_ols=v_ols))
+}
+
+simmulation1 <- function() {
+  X <- randortho(n)[1:n, 1:p]
+  eps <- rnorm(n)
+  
+  sapply(ks, function(k) step1(k, X=X, eps=eps))
+}
+```
+
+```{r, eval=F}
+result1 <- replicate(200, simmulation1())
+saveRDS(result1, "simulation1.RData")
+```
+
+## Results
+
+```{r, echo=F}
+result1 <- readRDS("simulation1.RData")
+
+res1_k20  <- data.frame(t(result1[, 1, ]))
+res1_k100 <- data.frame(t(result1[, 2, ]))
+res1_k200 <- data.frame(t(result1[, 3, ]))
+
+cat("\n\n### Results for k=20 \n\n")
+ggplot(data = melt(res1_k20[,c("MSE_rr", "MSE_ols")]),  
+       aes(y=value, x=variable),alpha=0.1) + 
+  # scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylim(c(0, 3.75)) + 
+  scale_x_discrete(name="model", labels=c("Ridge", "OLS")) +
+  ylab("MSE")+   xlab("model") +   
+  labs(title="MSE for k=20")
+
+ggplot(data = melt(res1_k20[,c("bias_rr", "bias_ols")]),  
+       aes(y=value, x=variable),alpha=0.1) + 
+  # scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylim(c(0, 1.5)) + 
+  ylab("MSE")+   xlab("model") +   
+  labs(title="Bias for k=20") + 
+  scale_x_discrete(name="model", labels=c("Ridge", "OLS"))
+
+ggplot(data = melt(res1_k20[,c("var_rr", "var_ols")]),  
+       aes(y=value, x=variable),alpha=0.1) + 
+  # scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylim(c(0, 2.075)) + 
+  ylab("MSE")+   xlab("model") +   
+  labs(title="Variance for k=20") + 
+  scale_x_discrete(name="model", labels=c("Ridge", "OLS"))
+
+
+cat("\n\n### Results for k=100 \n\n")
+ggplot(data = melt(res1_k100[,c("MSE_rr", "MSE_ols")]),  
+       aes(y=value, x=variable),alpha=0.1) + 
+  # scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylim(c(0, 3.75)) + 
+  ylab("MSE")+   xlab("model") +   
+  labs(title="MSE for k=100") + 
+  scale_x_discrete(name="model", labels=c("Ridge", "OLS"))
+
+ggplot(data = melt(res1_k100[,c("bias_rr", "bias_ols")]),  
+       aes(y=value, x=variable),alpha=0.1) + 
+  # scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylim(c(0, 1.5)) + 
+  ylab("MSE")+   xlab("model") +   
+  labs(title="Bias for k=100") + 
+  scale_x_discrete(name="model", labels=c("Ridge", "OLS"))
+
+ggplot(data = melt(res1_k100[,c("var_rr", "var_ols")]),  
+       aes(y=value, x=variable),alpha=0.1) + 
+  # scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylim(c(0, 2.075)) + 
+  ylab("MSE")+   xlab("model") +   
+  labs(title="Variance for k=100") + 
+  scale_x_discrete(name="model", labels=c("Ridge", "OLS"))
+
+
+cat("\n\n### Results for k=200 \n\n")
+ggplot(data = melt(res1_k200[,c("MSE_rr", "MSE_ols")]),  
+       aes(y=value, x=variable),alpha=0.1) + 
+  # scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylim(c(0, 3.75)) + 
+  ylab("MSE")+   xlab("model") +   
+  labs(title="MSE for k=200") + 
+  scale_x_discrete(name="model", labels=c("Ridge", "OLS"))
+
+ggplot(data = melt(res1_k200[,c("bias_rr", "bias_ols")]),  
+       aes(y=value, x=variable),alpha=0.1) + 
+  # scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylim(c(0, 1.5)) + 
+  ylab("MSE")+   xlab("model") +   
+  labs(title="Bias for k=200") + 
+  scale_x_discrete(name="model", labels=c("Ridge", "OLS"))
+
+ggplot(data = melt(res1_k200[,c("var_rr", "var_ols")]),  
+       aes(y=value, x=variable),alpha=0.1) + 
+  # scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylim(c(0, 2.075)) + 
+  ylab("MSE")+   xlab("model") +   
+  labs(title="Variance for k=200") + 
+  scale_x_discrete(name="model", labels=c("Ridge", "OLS"))
+
+cat("\n\n### Results summary \n\n")
+sum1 <- t(rbind(colMeans(res1_k20), colMeans(res1_k100), colMeans(res1_k200)))
+colnames(sum1) <- c(20, 100, 200)
+kable(sum1, digits=2, caption="Comparison of OLS and Ridge Regression")
+```
+
+
+Both methods work better for small number of effects. When the signal is sparse, Ridge outperforms OLS. When the number of significant variables increases, the variance of Ridge also increases. For k=200, Ridge has a greater variance than OLS. However, it has still much smaller bias (and smaller MSE in consequence).
+
+# Task 2
+
+In this and the upcoming tasks, we will compare several regression approaches.
+We will compare the MSE of predictions and coefficients for all those approaches. 
+
+## Theoretical calculations
+
+Prediction error for ridge regression (using SURE):
+
+$$\widehat{PE} = RSS + 2\sigma^2\sum_{i=1}^n \frac{\lambda_i (X^TX)}{\lambda_i (X^TX) + \gamma}$$
+
+where $\lambda_i$ are the eigen values of $H=X(X^TX+\gamma I)^{-1}X^T$.
+
+Prediction error for LASSO (using SURE):
+
+$$\widehat{PE} = RSS + 2\sigma^2 \#\mathcal A$$
+where $\#\mathcal A$ is the number of selected variables.
+
+## Simulations
+
+We will repeat the following experiment a hundred times:
+
+  - sample matrix $X$ of size $1000 \times 950$ from normal distribution $\mathcal N (0, \sigma = frac 1 {\sqrt n})$, generate an error term vector from standard normal distribution;
+  
+  - the real coefficients are: $\beta_1, \ldots, \beta_k = 3.5$, $\beta_{k+1}, \ldots, \beta_{950} = 0$ for $k$ equal 20, 100, 200;
+  
+  - build models:
+  
+    - LASSO with
+
+      - $\lambda$ from CV,
+  
+      - $\lambda$ from SURE;
+  
+    - Ridge Regression
+
+      - $\lambda$ from CV,
+  
+      - $\lambda$ from SURE;
+    
+    - ElasticNet with $\alpha=0.5$ and
+      
+      - $\lambda$ from CV,
+  
+      - $\lambda$ from SURE;
+  
+    - OLS
+
+      - with all variables,
+  
+      - with variables selected by AIC,
+  
+      - with variables selected by mBIC2.
+  
+  
+  - evaluate the models by calculating MSE for $\hat\beta$ and $\hat Y$.
+
+```{r}
+# calculate SURE criterion
+RSS <- function(X, Y, b_hat) {
+  sum((Y - X %*% b_hat) ^2)
+}
+
+PE_rr <- function(X, Y, lambda, sig=1) {
+  b <- glmnet(X, Y, alpha=0, lambda=lambda, intercept=F, 
+              standardize=F, type.gaussian="covariance")$beta
+  trac <- sum(eigen(X %*% solve(t(X)%*%X +
+                                  diag(rep(lambda * n, dim(X)[2]))) %*% t(X))$values)
+  RSS(X, Y, b) + 2 * sig^2 * trac
+}
+
+PE_lasso <- function(X, Y, lambda, sig=1) {
+  b <- glmnet(X, Y, alpha=1, lambda = lambda, intercept=F, 
+              standardize=F, type.gaussian="covariance")$beta
+  RSS(X, Y, b) + 2*sig^2 * sum(b > 0)
+}
+
+PE_enet <-  function(X, Y, lambda, sig=1) {
+  b <- glmnet(X, Y, alpha=.5, lambda = lambda, intercept=F, 
+              standardize=F, type.gaussian="covariance")$beta
+  if (sum(as.vector(b>0)) > 0) {
+    XA <- as.matrix(X[, as.vector(b>0)])
+  trac <- sum(
+    eigen(XA %*% solve(t(XA)%*%XA + 
+                         diag(rep(lambda * n, dim(XA)[2]), 
+                              nrow=dim(XA)[2])) %*% t(XA))$values)
+  RSS(X, Y, b) + 2*sig^2 * trac
+  } else {
+    Inf
+  }
+  
+}
+
+select_lambda <- function(fun, X, Y, sig=1) {
+  lambdas <- seq(0.1, 1, 0.01)
+  lambdas[order(sapply(lambdas, function(l) fun(X, Y, l, sig)))[1]]
+}
+
+sse <- function(x, y) {
+ sum((x - y)^2) 
+}
+```
+
+```{r}
+step2 <- function(k, X, eps, beta_true) {
+  p <- dim(X)[2]
+  Y <- X %*% beta_true + eps
+  
+  # a
+  l_ridge1 <- select_lambda(PE_rr, X, Y)
+  brr1 <- glmnet(X, Y, alpha=0, lambda=l_ridge1, intercept=F, 
+                 standardize=F, type.gaussian="covariance")$beta
+  l_lasso1 <- select_lambda(PE_lasso, X, Y)
+  blasso1 <-  glmnet(X, Y, alpha=1, lambda = l_lasso1, intercept=F, 
+                     standardize=F, type.gaussian="covariance")$beta
+  l_enet1 <- select_lambda(PE_enet, X, Y)
+  benet1 <- glmnet(X, Y, alpha=.5, lambda = l_enet1, intercept=F, 
+                   standardize=F, type.gaussian="covariance")$beta
+  
+  # b
+  l_ridge2 <- round(cv.glmnet(X, Y, alpha=0, intercept=F, standardize=F,
+                              type.gaussian="covariance")$lambda.min, 2)
+  brr2 <- glmnet(X, Y, alpha=0, lambda=l_ridge2, intercept=F, standardize=F,
+                 type.gaussian="covariance")$beta
+  l_lasso2 <- round(cv.glmnet(X, Y, alpha=1, intercept=F, standardize=F,
+                              type.gaussian="covariance")$lambda.min, 2)
+  blasso2 <-  glmnet(X, Y, alpha=1, lambda = l_lasso2, intercept=F, standardize=F,
+                     type.gaussian="covariance")$beta
+  l_enet2 <- round(cv.glmnet(X, Y, alpha=0.5, intercept=F, standardize=F,
+                             type.gaussian="covariance")$lambda.min, 2)
+  benet2 <- glmnet(X, Y, alpha=.5, lambda = l_enet2, intercept=F, standardize=F,
+                   type.gaussian="covariance")$beta
+  
+  # c
+  bls <- lm(Y~X-1)$coefficients
+  
+  d <- prepare_data(Y, X)
+  m1 <- forward(d, mbic2)
+  bmbic2 <- rep(0, p)
+  bmbic2[as.numeric(m1$model)] <- lm(Y~X[, as.numeric(m1$model)]-1)$coefficients
+  
+  m2 <- forward(d, aic)
+  baic <- rep(0, p)
+  baic[as.numeric(m2$model)] <- lm(Y~X[, as.numeric(m2$model)]-1)$coefficients
+  
+  matrix(c(sse(beta_true, brr1), sse(X %*% beta_true, X %*% brr1),
+           sse(beta_true, blasso1), sse(X %*% beta_true, X %*% blasso1),
+           sse(beta_true, benet1), sse(X %*% beta_true, X %*% benet1),
+           
+           sse(beta_true, brr2), sse(X %*% beta_true, X %*% brr2),
+           sse(beta_true, blasso2), sse(X %*% beta_true, X %*% blasso2),
+           sse(beta_true, benet2), sse(X %*% beta_true, X %*% benet2),
+           
+           sse(beta_true, bls), sse(X %*% beta_true, X %*% bls),
+           sse(beta_true, bmbic2), sse(X %*% beta_true, X %*% bmbic2),
+           sse(beta_true, baic), sse(X %*% beta_true, X %*% baic)), byrow=F, nrow=2)
+}
+
+simulation2 <- function() {
+  n <- 1000
+  p <- 950
+  ks <- c(20, 100, 200)
+  lapply(ks, function(k) {
+    replicate(2, try(step2(k,  
+                           matrix(rnorm(n*p, 0, 1/sqrt(n)), ncol=p), 
+                           rnorm(n), 
+                           real_beta(k, p=p))))
+  })
+}
+```
+
+```{r, eval=F}
+result2 <- simulation2()
+saveRDS(result2, "simulation2.RData")
+```
+
+## Results
+
+```{r, echo=F}
+result2 <- readRDS("simulation2.RData")
+
+n <- 1000
+p <- 950
+
+
+res2_k20_b  <- data.frame(t(result2[[1]][1, , ]) / p)
+colnames(res2_k20_b) <- c("Ridge_sure", "LASSO_sure", "ENet_sure", 
+                          "Ridge_cv", "LASSO_cv", "ENet_cv",
+                          "LM_OLS", "LM_mbic2", "LM_aic")
+
+res2_k20_y  <- data.frame(t(result2[[1]][2, , ]) / n)
+colnames(res2_k20_y) <- c("Ridge_sure", "LASSO_sure", "ENet_sure", 
+                          "Ridge_cv", "LASSO_cv", "ENet_cv",
+                          "LM_OLS", "LM_mbic2", "LM_aic")
+
+res2_k100_b  <- data.frame(t(result2[[2]][1, , ]) / p)
+colnames(res2_k100_b) <- c("Ridge_sure", "LASSO_sure", "ENet_sure", 
+                          "Ridge_cv", "LASSO_cv", "ENet_cv",
+                          "LM_OLS", "LM_mbic2", "LM_aic")
+res2_k100_y  <- data.frame(t(result2[[2]][2, , ]) / n)
+colnames(res2_k100_y) <- c("Ridge_sure", "LASSO_sure", "ENet_sure", 
+                          "Ridge_cv", "LASSO_cv", "ENet_cv",
+                          "LM_OLS", "LM_mbic2", "LM_aic")
+
+res2_k200_b  <- data.frame(t(result2[[3]][1, , ]) / p)
+colnames(res2_k200_b) <- c("Ridge_sure", "LASSO_sure", "ENet_sure", 
+                          "Ridge_cv", "LASSO_cv", "ENet_cv",
+                          "LM_OLS", "LM_mbic2", "LM_aic")
+res2_k200_y  <- data.frame(t(result2[[3]][2, , ]) / n)
+colnames(res2_k200_y) <- c("Ridge_sure", "LASSO_sure", "ENet_sure", 
+                          "Ridge_cv", "LASSO_cv", "ENet_cv",
+                          "LM_OLS", "LM_mbic2", "LM_aic")
+
+cat("\n\n### Results for k=20 \n\n")
+ggplot(data = melt(res2_k20_b), aes(y=value, x=variable),alpha=0.1) + 
+    scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylab("logMSE")+   xlab("model") +    labs(title="MSE of Beta for k=20")
+
+ggplot(data = melt(res2_k20_y),  aes(y=value, x=variable),alpha=0.1) + 
+  scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylab("logMSE")+   xlab("model") +    labs(title="MSE of prediction for k=20")
+
+cat("\n\n### Results for k=100 \n\n")
+ggplot(data = melt(res2_k100_b), aes(y=value, x=variable),alpha=0.1) + 
+  scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylab("logMSE")+   xlab("model") +    labs(title="MSE of Beta for k=100")
+
+ggplot(data = melt(res2_k100_y), aes(y=value, x=variable),alpha=0.1) + 
+  scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylab("logMSE")+   xlab("model") +    labs(title="MSE of prediction for k=100")
+
+cat("\n\n### Results for k=200 \n\n")
+ggplot(data = melt(res2_k200_b), aes(y=value, x=variable),alpha=0.1) + 
+  scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylab("logMSE")+   xlab("model") +    labs(title="MSE of Beta for k=200")
+
+ggplot(data = melt(res2_k200_y), aes(y=value, x=variable),alpha=0.1) + 
+  scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylab("logMSE")+   xlab("model") +    labs(title="MSE of prediction for k=200")
+
+cat("\n\n### Results summary \n\n")
+
+sum1 <- t(rbind(colMeans(res2_k20_b), colMeans(res2_k100_b), colMeans(res2_k200_b)))
+colnames(sum1) <- c(20, 100, 200)
+kable(sum1, digits=2, caption="MSE of Beta")
+
+sum1 <- t(rbind(colMeans(res2_k20_y), colMeans(res2_k100_y), colMeans(res2_k200_y)))
+colnames(sum1) <- c(20, 100, 200)
+kable(sum1, digits=2, caption="MSE of prediction")
+```
+
+
+Although the 10-fold cross-validation does not estimate coefficients precisely, its prediction properties are well and do not depend on k. In most cases, it works at least as well as OLS.
+When minimizing the Prediction Error Estimator obtained from SURE, the results are similar to those for non-regularised linear models with preselected variables. Results for both of these groups get worse when k increases.
+
+# Task 3
+
+In this task we will repeat the previous experiment for stronger signal.
+
+## Simulations
+
+We will repeat the following experiment a hundred times:
+
+  - sample matrix $X$ of size $1000 \times 950$ from normal distribution $\mathcal N (0, \sigma = frac 1 {\sqrt n})$, generate an error term vector from standard normal distribution;
+  
+  - **the real coefficients are: $\beta_1, \ldots, \beta_k = 5$, $\beta_{k+1}, \ldots, \beta_{950} = 0$ for $k$ equal 20, 100, 200;**
+  
+  - build models:
+  
+    - LASSO with
+
+      - $\lambda$ from CV,
+  
+      - $\lambda$ from SURE;
+  
+    - Ridge Regression
+
+      - $\lambda$ from CV,
+  
+      - $\lambda$ from SURE;
+    
+    - ElasticNet with $\alpha=0.5$ and
+      
+      - $\lambda$ from CV,
+  
+      - $\lambda$ from SURE;
+  
+    - OLS
+
+      - with all variables,
+  
+      - with variables selected by AIC,
+  
+      - with variables selected by mBIC2.
+  
+  
+  - evaluate the models by calculating MSE for $\hat\beta$ and $\hat Y$.
+
+```{r}
+simulation3 <- function() {
+  n <- 1000
+  p <- 950
+  ks <- c(20, 100, 200)
+  lapply(ks, function(k) {
+    replicate(100, try(step2(k,  matrix(rnorm(n*p, 0, 1/sqrt(n)), ncol=p), rnorm(n), real_beta(k, p=p, val=5))))
+  })
+}
+```
+
+```{r, eval=F}
+result3 <- simulation3()
+saveRDS(result3, "simulation3.RData")
+```
+
+
+## Results
+
+
+```{r, echo=F}
+results3 <- readRDS("simulation3.RData")
+
+res3_k20_b  <- data.frame(t(results3[[1]][1, , ]) / p)
+colnames(res3_k20_b) <- c("Ridge_sure", "LASSO_sure", "ENet_sure", 
+                          "Ridge_cv", "LASSO_cv", "ENet_cv",
+                          "LM_OLS", "LM_mbic2", "LM_aic")
+
+res3_k20_y  <- data.frame(t(results3[[1]][2, , ]) / n)
+colnames(res3_k20_y) <- c("Ridge_sure", "LASSO_sure", "ENet_sure", 
+                          "Ridge_cv", "LASSO_cv", "ENet_cv",
+                          "LM_OLS", "LM_mbic2", "LM_aic")
+
+res3_k100_b  <- data.frame(t(results3[[2]][1, , ]) / p)
+colnames(res3_k100_b) <- c("Ridge_sure", "LASSO_sure", "ENet_sure", 
+                          "Ridge_cv", "LASSO_cv", "ENet_cv",
+                          "LM_OLS", "LM_mbic2", "LM_aic")
+res3_k100_y  <- data.frame(t(results3[[2]][2, , ]) / n) 
+colnames(res3_k100_y) <- c("Ridge_sure", "LASSO_sure", "ENet_sure", 
+                          "Ridge_cv", "LASSO_cv", "ENet_cv",
+                          "LM_OLS", "LM_mbic2", "LM_aic")
+
+res3_k200_b  <- data.frame(t(sapply(results3[[3]][sapply(results3[[3]], is.matrix)],  function(x) x[1,])) / p)
+colnames(res3_k200_b) <- c("Ridge_sure", "LASSO_sure", "ENet_sure", 
+                          "Ridge_cv", "LASSO_cv", "ENet_cv",
+                          "LM_OLS", "LM_mbic2", "LM_aic")
+res3_k200_y  <- data.frame(t(sapply(results3[[3]][sapply(results3[[3]], is.matrix)],  function(x) x[2,])) / p)
+colnames(res3_k200_y) <- c("Ridge_sure", "LASSO_sure", "ENet_sure", 
+                          "Ridge_cv", "LASSO_cv", "ENet_cv",
+                          "LM_OLS", "LM_mbic2", "LM_aic")
+
+
+ggplot(data = melt(res3_k20_b),  aes(y=value, x=variable),alpha=0.1) + 
+  scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylab("logMSE")+   xlab("model") +    labs(title="MSE of Beta for k=20")
+
+ggplot(data = melt(res3_k20_y),  aes(y=value, x=variable),alpha=0.1) + 
+  scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylab("logMSE")+   xlab("model") +    labs(title="MSE of prediction for k=20")
+
+ggplot(data = melt(res3_k100_b), aes(y=value, x=variable),alpha=0.1) + 
+  scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylab("logMSE")+   xlab("model") +    labs(title="MSE of Beta for k=100")
+
+ggplot(data = melt(res3_k100_y), aes(y=value, x=variable),alpha=0.1) + 
+  scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylab("logMSE")+   xlab("model") +    labs(title="MSE of prediction for k=100")
+
+ggplot(data = melt(res3_k200_b), aes(y=value, x=variable),alpha=0.1) + 
+  scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() +
+  ylab("logMSE")+
+  xlab("model") + 
+  ylab("logMSE")+   xlab("model") +    labs(title="MSE of Beta for k=200") 
+
+
+ggplot(data = melt(res3_k200_y), aes(y=value, x=variable),alpha=0.1) + 
+  scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylab("logMSE")+   xlab("model") +    labs(title="MSE of prediction for k=200")
+
+sum1 <- t(rbind(colMeans(res3_k20_b), colMeans(res3_k100_b), colMeans(res3_k200_b)))
+colnames(sum1) <- c(20, 100, 200)
+kable(sum1, digits=2, caption="MSE of Beta")
+
+sum1 <- t(rbind(colMeans(res3_k20_y), colMeans(res3_k100_y), colMeans(res3_k200_y)))
+colnames(sum1) <- c(20, 100, 200)
+kable(sum1, digits=2, caption="MSE of prediction")
+```
+
+OLS with preselected variables got better in sparse cases. All other results became worse.
+
+# Task 4
+
+## Simulations a
+
+We will repeat the following experiment a hundred times:
+
+  - sample matrix $X$ of size $1000 \times 950$ from multivariate normal distribution $\mathcal N_n (0, \Sigma = 0.5 + 0.5*\mathbbm 1 {i=1})$, generate an error term vector from standard normal distribution;
+  
+  - the real coefficients are: $\beta_1, \ldots, \beta_k = 3.5$, $\beta_{k+1}, \ldots, \beta_{950} = 0$ for $k$ equal 20, 100, 200;
+  
+  - build models:
+  
+    - LASSO with
+
+      - $\lambda$ from CV,
+  
+      - $\lambda$ from SURE;
+  
+    - Ridge Regression
+
+      - $\lambda$ from CV,
+  
+      - $\lambda$ from SURE;
+    
+    - ElasticNet with $\alpha=0.5$ and
+      
+      - $\lambda$ from CV,
+  
+      - $\lambda$ from SURE;
+  
+    - OLS
+
+      - with all variables,
+  
+      - with variables selected by AIC,
+  
+      - with variables selected by mBIC2.
+  
+  
+  - evaluate the models by calculating MSE for $\hat\beta$ and $\hat Y$.
+
+```{r}
+simulation4a <- function() {
+  n <- 1000
+  p <- 950
+  ks <- c(20, 100, 200)
+  Sig <- matrix(rep(0.5, p*p), ncol=p)
+  diag(Sig) <- 1
+  lapply(ks, function(k) {
+    beta_true <- real_beta(k, p=p)
+    replicate(100, try(step2(k, mvrnorm(n, rep(0, p), Sig), rnorm(n), beta_true)))
+  })
+}
+```
+
+```{r, eval=F}
+result4a <- simulation4a()
+saveRDS(result4a, "simulation4a.RData")
+```
+
+```{r}
+simulation4b <- function() {
+  n <- 1000
+  p <- 950
+  ks <- c(20, 100, 200)
+  Sig <- matrix(rep(0.5, p*p), ncol=p)
+  diag(Sig) <- 1
+  lapply(ks, function(k) {
+    beta_true <- real_beta(k, val=5, p=p)
+    replicate(10, try(step2(k,  mvrnorm(n, rep(0, p), Sig), rnorm(n), beta_true)))
+  })
+}
+```
+
+```{r, eval=F}
+results4b <-simulation4b()
+saveRDS(result4b, "simulation4b.RData")
+```
+
+## Simulations b
+
+We will repeat the following experiment ten times:
+
+  - sample matrix $X$ of size $1000 \times 950$ from multivariate normal distribution $\mathcal N_n (0, \Sigma = 0.5 + 0.5*\mathbbm 1 {i=1})$, generate an error term vector from standard normal distribution;
+  
+  - the real coefficients are: $\beta_1, \ldots, \beta_k = 5$, $\beta_{k+1}, \ldots, \beta_{950} = 0$ for $k$ equal 20, 100, 200;
+  
+  - build models:
+  
+    - LASSO with
+
+      - $\lambda$ from CV,
+  
+      - $\lambda$ from SURE;
+  
+    - Ridge Regression
+
+      - $\lambda$ from CV,
+  
+      - $\lambda$ from SURE;
+    
+    - ElasticNet with $\alpha=0.5$ and
+      
+      - $\lambda$ from CV,
+  
+      - $\lambda$ from SURE;
+  
+    - OLS
+
+      - with all variables,
+  
+      - with variables selected by AIC,
+  
+      - with variables selected by mBIC2.
+  
+  
+  - evaluate the models by calculating MSE for $\hat\beta$ and $\hat Y$.
+  
+In this and all next tasks, the AIC and mBIC2 criteria were used in the fast forward procedure (which may be suboptimal).
+
+*Please note that the number of iterations is lower than expected (100) because of the high time complexity of the task.*
+
+## Results b
+
+```{r, echo=F}
+result4a <- readRDS("simulation4a.RData")
+
+res4a_k20_b  <- data.frame(t(result4a[[1]][1, ,]) / p)
+colnames(res4a_k20_b) <- c("Ridge_sure", "LASSO_sure", "ENet_sure", 
+                          "Ridge_cv", "LASSO_cv", "ENet_cv",
+                          "LM_OLS", "LM_mbic2", "LM_aic")
+
+res4a_k20_y  <- data.frame(t(result4a[[1]][2, ,]) / n)
+colnames(res4a_k20_y) <- c("Ridge_sure", "LASSO_sure", "ENet_sure", 
+                          "Ridge_cv", "LASSO_cv", "ENet_cv",
+                          "LM_OLS", "LM_mbic2", "LM_aic")
+
+res4a_k100_b  <- data.frame(t(result4a[[2]][1, ,]) / p)
+colnames(res4a_k100_b) <- c("Ridge_sure", "LASSO_sure", "ENet_sure", 
+                          "Ridge_cv", "LASSO_cv", "ENet_cv",
+                          "LM_OLS", "LM_mbic2", "LM_aic")
+res4a_k100_y  <- data.frame(t(result4a[[2]][2, , ]) / n)
+colnames(res4a_k100_y) <- c("Ridge_sure", "LASSO_sure", "ENet_sure", 
+                          "Ridge_cv", "LASSO_cv", "ENet_cv",
+                          "LM_OLS", "LM_mbic2", "LM_aic")
+
+res4a_k200_b  <- data.frame(t(result4a[[3]][1, , ]) / p)
+colnames(res4a_k200_b) <- c("Ridge_sure", "LASSO_sure", "ENet_sure", 
+                          "Ridge_cv", "LASSO_cv", "ENet_cv",
+                          "LM_OLS", "LM_mbic2", "LM_aic")
+res4a_k200_y  <- data.frame(t(result4a[[3]][2, , ]) / n)
+colnames(res4a_k200_y) <- c("Ridge_sure", "LASSO_sure", "ENet_sure", 
+                          "Ridge_cv", "LASSO_cv", "ENet_cv",
+                          "LM_OLS", "LM_mbic2", "LM_aic")
+
+
+ggplot(data = melt(res4a_k20_b), aes(y=value, x=variable),alpha=0.1) + 
+  scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylab("logMSE")+   xlab("model") +    labs(title="MSE of Beta for k=20")
+
+ggplot(data = melt(res4a_k20_y),  aes(y=value, x=variable),alpha=0.1) + 
+    scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+   ylab("logMSE")+   xlab("model") +    labs(title="MSE of prediction for k=20")
+
+ggplot(data = melt(res4a_k100_b),  aes(y=value, x=variable),alpha=0.1) + 
+  scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylab("logMSE")+   xlab("model") +    labs(title="MSE of Beta for k=100")
+
+ggplot(data = melt(res4a_k100_y),  aes(y=value, x=variable),alpha=0.1) + 
+  scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylab("logMSE")+   xlab("model") +    labs(title="MSE of prediction for k=100")
+
+ggplot(data = melt(res4a_k200_b), aes(y=value, x=variable),alpha=0.1) + 
+  scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylab("logMSE")+   xlab("model") +    labs(title="MSE of Beta for k=200")
+
+ggplot(data = melt(res4a_k200_y), aes(y=value, x=variable),alpha=0.1) + 
+  scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylab("logMSE")+   xlab("model") +    labs(title="MSE of prediction for k=200")
+
+sum1 <- t(rbind(colMeans(res4a_k20_b), colMeans(res4a_k100_b), colMeans(res4a_k200_b)))
+colnames(sum1) <- c(20, 100, 200)
+kable(sum1, digits=2, caption="MSE of Beta")
+
+sum1 <- t(rbind(colMeans(res4a_k20_y), colMeans(res4a_k100_y), colMeans(res4a_k200_y)))
+colnames(sum1) <- c(20, 100, 200)
+kable(sum1, digits=2, caption="MSE of prediction")
+```
+
+
+When the variables are dependent, the task becomes much more complicated. We got satisfying results for methods performing L1 penalization (LASSO and ENet). Good predictions from OLS. Ridge performs poorly, OLS with preselected variables cannot handle this case.
+
+## Results b
+
+```{r, echo=F}
+result4b <- readRDS("simulation4b.RData") 
+
+res4b_k20_b  <- data.frame(t(result4b[[1]][1, ,]) / p)
+colnames(res4b_k20_b) <- c("Ridge_sure", "LASSO_sure", "ENet_sure", 
+                          "Ridge_cv", "LASSO_cv", "ENet_cv",
+                          "LM_OLS", "LM_mbic2", "LM_aic")
+
+res4b_k20_y  <- data.frame(t(result4b[[1]][2, ,]) / n)
+colnames(res4b_k20_y) <- c("Ridge_sure", "LASSO_sure", "ENet_sure", 
+                          "Ridge_cv", "LASSO_cv", "ENet_cv",
+                          "LM_OLS", "LM_mbic2", "LM_aic")
+
+res4b_k100_b  <- data.frame(t(result4b[[2]][1, ,]) / p)
+colnames(res4b_k100_b) <- c("Ridge_sure", "LASSO_sure", "ENet_sure", 
+                          "Ridge_cv", "LASSO_cv", "ENet_cv",
+                          "LM_OLS", "LM_mbic2", "LM_aic")
+res4b_k100_y  <- data.frame(t(result4b[[2]][2, , ]) / n)
+colnames(res4b_k100_y) <- c("Ridge_sure", "LASSO_sure", "ENet_sure", 
+                          "Ridge_cv", "LASSO_cv", "ENet_cv",
+                          "LM_OLS", "LM_mbic2", "LM_aic")
+
+res4b_k200_b  <- data.frame(t(result4b[[3]][1, , ]) / p)
+colnames(res4b_k200_b) <- c("Ridge_sure", "LASSO_sure", "ENet_sure", 
+                          "Ridge_cv", "LASSO_cv", "ENet_cv",
+                          "LM_OLS", "LM_mbic2", "LM_aic")
+res4b_k200_y  <- data.frame(t(result4b[[3]][2, , ]) / n)
+colnames(res4b_k200_y) <- c("Ridge_sure", "LASSO_sure", "ENet_sure", 
+                          "Ridge_cv", "LASSO_cv", "ENet_cv",
+                          "LM_OLS", "LM_mbic2", "LM_aic")
+
+
+ggplot(data = melt(res4b_k20_b), aes(y=value, x=variable),alpha=0.1) + 
+  scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylab("logMSE")+   xlab("model") +    labs(title="MSE of Beta for k=20")
+
+ggplot(data = melt(res4b_k20_y),  aes(y=value, x=variable),alpha=0.1) + 
+    scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+   ylab("logMSE")+   xlab("model") +    labs(title="MSE of prediction for k=20")
+
+ggplot(data = melt(res4b_k100_b),  aes(y=value, x=variable),alpha=0.1) + 
+  scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylab("logMSE")+   xlab("model") +    labs(title="MSE of Beta for k=100")
+
+ggplot(data = melt(res4b_k100_y),  aes(y=value, x=variable),alpha=0.1) + 
+  scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylab("logMSE")+   xlab("model") +    labs(title="MSE of prediction for k=100")
+
+ggplot(data = melt(res4b_k200_b), aes(y=value, x=variable),alpha=0.1) + 
+  scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylab("logMSE")+   xlab("model") +    labs(title="MSE of Beta for k=200")
+
+ggplot(data = melt(res4b_k200_y), aes(y=value, x=variable),alpha=0.1) + 
+  scale_y_continuous(trans='log10') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=.5)) +
+  geom_boxplot() + 
+  ylab("logMSE")+   xlab("model") +    labs(title="MSE of prediction for k=200")
+
+sum1 <- t(rbind(colMeans(res4b_k20_b), colMeans(res4b_k100_b), colMeans(res4b_k200_b)))
+colnames(sum1) <- c(20, 100, 200)
+kable(sum1, digits=2, caption="MSE of Beta")
+
+sum1 <- t(rbind(colMeans(res4b_k20_y), colMeans(res4b_k100_y), colMeans(res4b_k200_y)))
+colnames(sum1) <- c(20, 100, 200)
+kable(sum1, digits=2, caption="MSE of prediction")
+```
+
+For stronger signals, the observations from the previous example are further highlighted. 
+
+# Task 5
+
+In the fifth task we will ilustrate the irrepresentability nad identifiability properties.
+
+## Theoretical descritpion
+
+Irrepresentability condition:
+
+$$\Vert X_{\bar I}^TX_I  (X_I^TX_I)^{-1}S_I \Vert_{\infty} \leq 1$$
+
+Identifiability condition:
+
+$$X\gamma = X\beta \text{ and } \gamma \neq \beta \text{ then } \Vert\gamma\Vert_1 > \Vert\beta\Vert_1$$
+
+## Simulation
+
+- generate design matrix $X$ fo size $100 \times 200$ form the normal distribution $\mathcal N (0, \sigma = 0.1)$;
+
+- find the maximal $k^{IR}$ for which the LASSO irrepresentability condition holds;
+
+- find the maximal $k^{ID}$ for which the LASSO identifiability condition holds;
+
+- generate the vectors of coefficients:
+  - $\beta_1, \ldots, \beta_k^{IR} = 20$, $\beta_{k+1}, \ldots, \beta_{200} = 0$, 
+  - $\beta_1, \ldots, \beta_k^{ID} = 20$,  $\beta_{k+1}, \ldots, \beta_{200} = 0$,
+  - $\beta_1, \ldots, \beta_k^{ID} = 20$, $\beta_{k+1}, \ldots, \beta_{200} = 0$;
+
+- generate an error term from the standard normal distribution; for each of the above vectors, calculate the values of dependent variable $Y$;
+
+- provide scatter plots for betas and their estimators.
+
+```{r, eval=T, fig.width =6, fig.asp = .75}
+n <- 100
+p <- 200
+ls <- seq(0.01, 1, 0.001)
+X <- matrix(rnorm(n*p, 0, 0.1), n, p)
+
+beta_k <- function(k, p=200, val=20) {
+  c(rep(val, k), rep(0, p-k))
+}
+
+irrepresentability <- function(beta, X) {
+  I <- beta != 0
+  Ic <- beta == 0
+  S <- as.numeric(beta >  0) - as.numeric(beta < 0)
+  max(t(X[, Ic]) %*% X[, I] %*% solve(t(X[, I]) %*% X[, I]) %*% as.matrix(S[I])) <= 1
+}
+
+k_IR <- max(which(sapply(1:100, function (k) irrepresentability(beta_k(k),  X))))
+
+eps <- rnorm(n)
+b <- beta_k(k_IR)
+Y <- X %*% b + eps
+
+cv_model <- cv.glmnet(X, Y, lambda=10^seq(-3,-1, by=0.001), intercept = F, standardize = F)
+
+searchIR <- sapply(ls, function(l) {
+  sum((as.vector(glmnet(X, Y, lambda=l, intercept = F, standardize = F)$beta) != 0) == (b != 0))
+})
+
+opt_lambda_IR <- ls[order(searchIR)[1]]
+b_IR <- glmnet(X, Y, lambda=opt_lambda_IR, intercept = F, standardize = F)$beta
+
+plot(as.vector(b_IR)~b, 
+     main="Regression coefficients for irrepresentability", 
+     xlab="true beta", 
+     ylab="estimated beta")
+abline(h=(max(b_IR[b==0])+min(b_IR[b!=0]))/2, lty=2, color="grey")
+cat("\n\n")
+obj <- rep(1, 2*p);
+constmat1 <- cbind(X,-X)
+constmat2 <- cbind(diag(p), matrix(rep(0, p*p), nrow=p))
+constmat3 <- cbind(matrix(rep(0,p*p),nrow=p),diag(p)) 
+constmat <- rbind(constmat1, constmat2, constmat3)
+consteq <- c(rep('=', n), rep('>=', 2 * p))
+
+identifiability <- function(beta, X) {
+  Yn <- X %*% beta;
+  constright <- c(Yn, rep(0, 2*p));
+  wyn1 <- lp('min', obj, constmat, consteq, constright);
+  wyn <- wyn1$solution[1:p] - wyn1$solution[(p+1):(2*p)];
+  (max(abs(wyn-beta)) < 1E-7)
+}
+
+k_ID <- max(which(sapply(1:200, function (k) identifiability(beta_k(k, val=20, p=p),  X))))
+
+eps <- rep(0, n)
+b <- beta_k(k_ID, val=20, p=p)
+Y <- X %*% b + eps
+
+
+search <- sapply(ls, function(l) {
+  sum((as.vector(glmnet(X, Y, lambda=l, intercept = F, standardize = F)$beta) != 0) == (b != 0))
+})
+
+opt_lambda_ID <- ls[order(search)[1]]
+b_opt <- glmnet(X, Y, lambda=opt_lambda_ID * .5, intercept = F, standardize = F)$beta
+
+plot(as.vector(b_opt)~b, 
+     main="Regression coefficients for identifiability", 
+     xlab="true beta", 
+     ylab="estimated beta")
+abline(h=(max(b_opt[b==0])+min(b_opt[b!=0]))/2, lty=2, color="grey")
+cat("\n\n")
+b <- beta_k(k_ID+1, val=20, p=p)
+Y <- 100*X %*% b + eps
+ls <- seq(0.01, 1, 0.001)
+
+search <- sapply(ls, function(l) {
+  sum((as.vector(glmnet(X, Y, lambda=l, intercept = F, standardize = F)$beta) != 0) == (b != 0))
+})
+
+opt_lambda_ID <- ls[order(search)[1]]
+b_opt <- glmnet(X, Y, lambda=opt_lambda_ID * .5, intercept = F, standardize = F)$beta
+
+plot(as.vector(b_opt)~b,
+     main="Regression coefficients when identifiability does not hold", 
+     xlab="true beta", 
+     ylab="estimated beta")
+abline(h=(max(b_opt[b==0])+min(b_opt[b!=0]))/2, lty=2, color="grey")
+cat("\n\n")
+```
+
+As we can see in the above scatter plots, we can separate zero and nonzero elements of the beta vector when the irrepresentability and identifiability conditions hold. However, we cannot separate when the identifiability condition does not hold.
+
+# Task 6
+
+In this task, we will apply techniques considered before to a real world example. We will predict the expression level of gene one using the expression levels of 3220 other genes.
+
+## Implementation
+
+First we split the data into train (180 individuals) and test (30 individuals) set. Then we will build LASSO, RIdge and ENet models using lambda from cross-validation. First, we will build models using all variables, then we will build models using only preselected variables.
+
+## Results
+
+```{r, eval=T}
+d <- readRDS("realdata.RData")
+d <- matrix(d[1:210, 1:3221], 210, 3221)
+test_index <- sample(1:210, 30)
+
+d_train <- d[-test_index, ]
+d_test <- d[test_index, ]
+
+x_train <- d_train[, 2:3221]
+y_train <- d_train[, 1]
+
+x_test <- d_test[, 2:3221]
+y_test <- d_test[, 1]
+
+model_rr <- glmnet(x_train, y_train, standardize = F, alpha=0, 
+                   lambda = cv.glmnet(x_train, y_train, standardize = F, alpha=0)$lambda.min)
+model_lasso <- glmnet(x_train, y_train, standardize = F, alpha=1, 
+                      lambda = cv.glmnet(x_train, y_train, standardize = F, alpha=1)$lambda.min)
+model_enet <- glmnet(x_train, y_train, standardize = F, alpha=.5, 
+                     lambda = cv.glmnet(x_train, y_train, standardize = F, alpha=.5)$lambda.min)
+
+nov_rr <- sum(model_rr$beta > 0)
+nov_lasso <- sum(model_lasso$beta > 0)
+nov_enet <- sum(model_enet$beta > 0)
+
+y_rr <- predict(model_rr, newx=x_test)
+y_lasso <- predict(model_lasso, newx=x_test)
+y_enet <- predict(model_enet, newx=x_test)
+
+rmse_rr <- sqrt(mean((y_test - y_rr)^2))
+rmse_lasso <- sqrt(mean((y_test - y_lasso)^2))
+rmse_enet <- sqrt(mean((y_test - y_enet)^2))
+
+mape_rr <- mean(abs(y_test - y_rr) / y_test * 100)
+mape_lasso <- mean(abs(y_test - y_lasso) / y_test * 100)
+mape_enet <- mean(abs(y_test - y_enet) / y_test * 100)
+
+results6a <- data.frame(matrix(c(nov_rr, nov_lasso, nov_enet, 
+                                rmse_rr, rmse_lasso, rmse_enet, 
+                                mape_rr, mape_lasso, mape_enet), nrow=3),  
+                       row.names = c("Ridge", "LASSO", "ENet"))
+colnames(results6a) <- c("Vars", "RMSE", "MAPE")
+kable(results6a, digits=2, caption="Evaluation of models build on all variables.")
+
+selected <- unique(c(order(cor(d_train)[2:3221, 1], decreasing=T)[1:300], 
+                     as.numeric(stepwise(prepare_data(y_train, x_train), mbic2)$model)))
+```
+
+```{r, eval=T}
+x_train <- x_train[, selected]
+x_test <- x_test[, selected]
+
+model_rr <- glmnet(x_train, y_train, standardize = F, alpha=0, 
+                   lambda = cv.glmnet(x_train, y_train, standardize = F, alpha=0)$lambda.min)
+model_lasso <- glmnet(x_train, y_train, standardize = F, alpha=1, 
+                      lambda = cv.glmnet(x_train, y_train, standardize = F, alpha=1)$lambda.min)
+model_enet <- glmnet(x_train, y_train, standardize = F, alpha=.5, 
+                     lambda = cv.glmnet(x_train, y_train, standardize = F, alpha=.5)$lambda.min)
+
+nov_rr <- sum(model_rr$beta > 0)
+nov_lasso <- sum(model_lasso$beta > 0)
+nov_enet <- sum(model_enet$beta > 0)
+
+y_rr <- predict(model_rr, newx=x_test)
+y_lasso <- predict(model_lasso, newx=x_test)
+y_enet <- predict(model_enet, newx=x_test)
+
+rmse_rr <- sqrt(mean((y_test - y_rr)^2))
+rmse_lasso <- sqrt(mean((y_test - y_lasso)^2))
+rmse_enet <- sqrt(mean((y_test - y_enet)^2))
+
+mape_rr <- mean(abs(y_test - y_rr) / y_test * 100)
+mape_lasso <- mean(abs(y_test - y_lasso) / y_test * 100)
+mape_enet <- mean(abs(y_test - y_enet) / y_test * 100)
+
+results6b <- data.frame(matrix(c(nov_rr, nov_lasso, nov_enet, 
+                                rmse_rr, rmse_lasso, rmse_enet, 
+                                mape_rr, mape_lasso, mape_enet), nrow=3),  
+                       row.names = c("Ridge", "LASSO", "ENet"))
+colnames(results6b) <- c("Vars", "RMSE", "MAPE")
+kable(results6b, digits=2, caption="Evaluation of models build on preselected variables.")
+```
+
+On both bases, Ridge Regression uses almost all available variables. It has similar results with and without preselecting variables. LASSO and ElasticNet perform better after preselecting variables; LASSO selects the lowest number od variables, ENet has the lowest Mean Absolute Percentage Error (MAPE).
